@@ -1,4 +1,50 @@
-# Vertical shorts pipeline
+# Video editing pipeline
+
+Two ways in.
+
+## 1. Edit a video from change requests
+
+Send a video and say what you want changed. Each change becomes an entry in an
+edit list; the video is rebuilt from the original every time.
+
+```bash
+python -m pipeline inspect clip.mp4                    # what is this file
+python -m pipeline sheet --video clip.mp4              # stamped frames to point at
+python -m pipeline edit --edits clip.edits.json --sheet
+```
+
+```json
+{
+  "source": "clip.mp4",
+  "output": "out/clip.mp4",
+  "ops": [
+    { "op": "cut",     "from": "0:00", "to": "0:03.5", "note": "dead air at the top" },
+    { "op": "reframe", "aspect": "9:16",               "note": "make it vertical" },
+    { "op": "text",    "text": "88th minute", "from": "0:01", "to": "0:04" },
+    { "op": "music",   "file": "bed.mp3", "gain": 0.18 },
+    { "op": "loudness", "lufs": -14 }
+  ]
+}
+```
+
+Nineteen operations — `python -m pipeline ops` lists them:
+`trim, cut, speed, freeze, append, reframe, crop, scale, rotate, color,
+stabilize, fade, text, subtitles, volume, mute, replace_audio, music, loudness`.
+
+Three properties make this survivable over many rounds:
+
+- **Non-destructive.** Every rebuild replays the list against the untouched
+  original. Undo is *deleting the op*, not applying an inverse.
+- **Versioned.** Output lands as `clip.v1.mp4`, `clip.v2.mp4`, … so going back
+  two rounds is picking a file.
+- **Incremental.** Each intermediate is cached under a hash of the source plus
+  every op up to it. Changing the last op in a seven-op list re-encodes one
+  pass, not seven — 4s instead of 40s, measured.
+
+`--sheet` writes a grid of timecode-stamped frames, which is how a review turns
+into a precise request instead of a round trip.
+
+## 2. Build a short from an article
 
 Give it an article link and a highlight clip. It returns a finished
 **1080×1920** short: the clip reframed to vertical with a tracked crop, b-roll
@@ -172,10 +218,11 @@ mistakes it for a transcript.
 python -m pytest -q
 ```
 
-104 tests over the logic worth trusting: the camera path, cue grouping, marker
-geometry, phrase offsets, budget accounting, config validation, and the
-HyperFrames HTML contract (every timed element is a clip, videos are muted with
-sibling audio, fades have hard kills, the composition is deterministic).
+167 tests over the logic worth trusting: the camera path, cue grouping, marker
+geometry, phrase offsets, budget accounting, config validation, timecode
+parsing, edit-list replay and caching, and the HyperFrames HTML contract (every
+timed element is a clip, videos are muted with sibling audio, fades have hard
+kills, the composition is deterministic).
 
 ---
 

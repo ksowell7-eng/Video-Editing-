@@ -111,3 +111,44 @@ so selection can prefer phrases that do not.
   submit/poll/download pair. Keep the reserve/settle calls around it.
 - **A different marker style.** `markers.style` is `underline`, `box` or
   `circle`; the CSS for each is in `_css()` in `compose/html.py`.
+
+
+## The edit loop
+
+`pipeline/edits/` exists for a different shape of work than the pipeline: the
+user sends a change, the video is rebuilt, repeat. Over many rounds, three
+things matter more than throughput.
+
+**Replay, don't mutate.** Every rebuild starts from the original source and
+replays the whole op list. The consequence worth having is that *undo is
+deletion* — remove the op and the change is gone. Applying an inverse edit
+(re-adding three seconds you cut) does not restore the original frames and
+compounds error with every round.
+
+**Cache by prefix.** Each intermediate is stored under a hash of the source
+fingerprint plus every op up to that point. Because change requests almost
+always append to or tweak the tail of the list, the common case reuses the
+whole prefix. Measured on a seven-op list: an unchanged replay is 0.7s and 0
+encodes; changing only the last op is 4s and 1 encode; a cold build is ~40s.
+
+**Version the output.** `clip.v1.mp4`, `clip.v2.mp4`, … Rolling back two rounds
+is picking a file rather than reconstructing state.
+
+### Op ordering
+
+Ops are passes, applied in list order, so order is meaningful:
+
+- framing (`reframe`, `crop`, `scale`, `rotate`) before graphics (`text`,
+  `subtitles`) — otherwise text is burned in at the wrong size and then cropped;
+- `speed` before anything with fixed timecodes, since retiming moves them;
+- `loudness` last among audio ops, so it measures the final mix.
+
+### Contact sheets
+
+The review artifact. Frames sampled across the clip, each stamped with its
+timecode, tiled into one image. It converts "the bit after the wide shot" into
+"0:14.500", which is the difference between one round trip and three.
+
+The stamp goes through the same drawtext escaping as the `text` op — an
+unescaped colon terminates drawtext's option parsing and every label silently
+truncates to `0`.

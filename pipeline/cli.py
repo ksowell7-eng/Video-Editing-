@@ -18,7 +18,10 @@ from pathlib import Path
 
 from .budget import from_job
 from .config import DEFAULTS, Job, parse_overrides
-from .errors import NeedsScript, PipelineError
+from .edits.apply import apply_edits, load_edit_list, next_version, prune_cache
+from .edits.ops import OPS
+from .edits.review import contact_sheet
+from .errors import ConfigError, NeedsScript, PipelineError
 from .preflight import report, run_checks
 from .state import RunState
 from .steps import STEP_NAMES, STEPS, Context, execute
@@ -140,6 +143,110 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_edit(args: argparse.Namespace) -> int:
+    """Apply an edit list to a video. This is the change-request loop."""
+    edits_path = Path(args.edits).resolve()
+    blob = load_edit_list(edits_path)
+    root = edits_path.parent
+
+    source_value = args.source or blob.get("source")
+    if not source_value:
+        raise ConfigError(
+            "No source video",
+            hint="Pass --source, or set \"source\" in the edit list.",
+        )
+    source = Path(source_value).expanduser()
+    if not source.is_absolute():
+        source = (root / source).resolve()
+
+    if args.out:
+        output = Path(args.out).resolve()
+    else:
+        configured = blob.get("output")
+        base = (root / configured).resolve() if configured else (
+            root / "out" / f"{source.stem}.mp4"
+        )
+        output = base if args.overwrite else next_version(base)
+
+    workdir = Path(args.workdir).resolve() if args.workdir else root / "editwork"
+    reframe_cfg = {**DEFAULTS["reframe"], **blob.get("reframe", {})}
+
+    logs.configure(verbose=args.verbose)
+    if args.dry_run:
+        from .edits.ops import describe  # noqa: PLC0415
+
+        logs.info(f"{len(blob['ops'])} op(s) against {source.name} → {output.name}")
+        for index, spec in enumerate(blob["ops"]):
+            logs.info(f"  [{index + 1}] {describe(spec)}")
+        return 0
+
+    result = apply_edits(
+        source, blob["ops"], output,
+        workdir=workdir,
+        fps=int(blob.get("fps", DEFAULTS["output"]["fps"])),
+        job_root=root,
+        reframe_cfg=reframe_cfg,
+        force=args.force,
+    )
+
+    record = output.with_suffix(".edits.json")
+    record.write_text(json.dumps({
+        "source": str(source),
+        "output": str(result.output),
+        "duration_s": result.duration_s,
+        "ops": blob["ops"],
+        "steps": result.steps,
+    }, indent=2, default=str), encoding="utf-8")
+
+    if args.sheet:
+        contact_sheet(result.output, result.output.with_suffix(".sheet.png"),
+                      count=args.sheet_frames)
+    pruned = prune_cache(workdir)
+    if pruned:
+        logs.debug(f"pruned {pruned} cached intermediate(s)")
+    return 0
+
+
+def cmd_sheet(args: argparse.Namespace) -> int:
+    video = Path(args.video).resolve()
+    out = Path(args.out).resolve() if args.out else video.with_suffix(".sheet.png")
+    contact_sheet(video, out, count=args.frames, columns=args.columns)
+    return 0
+
+
+def cmd_inspect(args: argparse.Namespace) -> int:
+    """What is this file? First thing to run on anything newly arrived."""
+    from .media.probe import probe  # noqa: PLC0415
+    from .edits.timecode import format_tc  # noqa: PLC0415
+
+    for value in args.video:
+        path = Path(value).resolve()
+        info = probe(path)
+        logs.info(
+            f"{path.name}",
+            duration=format_tc(info.duration_s, millis=True),
+            size=f"{info.width}x{info.height}",
+            fps=f"{info.fps:.2f}",
+            audio="yes" if info.has_audio else "no",
+            codec=info.codec,
+            mb=f"{path.stat().st_size / 1e6:.1f}",
+        )
+        if info.width and info.height:
+            orientation = "vertical" if info.is_vertical else "landscape"
+            logs.info(f"  {orientation}, aspect {info.aspect:.3f}")
+    return 0
+
+
+def cmd_ops(args: argparse.Namespace) -> int:
+    """List the edit vocabulary."""
+    width = max(len(name) for name in OPS) + 2
+    for name in sorted(OPS):
+        spec = OPS[name]
+        required = f"  (needs: {', '.join(spec.required)})" if spec.required else ""
+        logs.info(f"  {name.ljust(width)} {spec.summary}{required}")
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     job = Job.load(args.job)
     state = RunState(_run_dir(job, args.run_dir), job.id)
@@ -194,6 +301,32 @@ def build_parser() -> argparse.ArgumentParser:
     run_cmd.add_argument("--run-dir", help="workspace directory (default: runs/<job id>)")
     run_cmd.add_argument("--skip-doctor", action="store_true", help="skip preflight")
     run_cmd.set_defaults(func=cmd_run)
+
+    edit = subparsers.add_parser("edit", help="apply an edit list to a video")
+    edit.add_argument("--edits", required=True, help="the edit list JSON")
+    edit.add_argument("--source", help="source video (overrides the list's own 'source')")
+    edit.add_argument("--out", help="output path (default: next version beside the last)")
+    edit.add_argument("--overwrite", action="store_true", help="replace the output instead of versioning")
+    edit.add_argument("--workdir", help="where intermediates and the cache live")
+    edit.add_argument("--force", action="store_true", help="ignore the cache and re-render every op")
+    edit.add_argument("--dry-run", action="store_true", help="list the ops without rendering")
+    edit.add_argument("--sheet", action="store_true", help="also write a contact sheet")
+    edit.add_argument("--sheet-frames", type=int, default=12)
+    edit.set_defaults(func=cmd_edit)
+
+    sheet = subparsers.add_parser("sheet", help="write a stamped contact sheet for a video")
+    sheet.add_argument("--video", required=True)
+    sheet.add_argument("--out")
+    sheet.add_argument("--frames", type=int, default=12)
+    sheet.add_argument("--columns", type=int, default=4)
+    sheet.set_defaults(func=cmd_sheet)
+
+    inspect = subparsers.add_parser("inspect", help="duration, size, fps and audio for a file")
+    inspect.add_argument("video", nargs="+")
+    inspect.set_defaults(func=cmd_inspect)
+
+    ops_cmd = subparsers.add_parser("ops", help="list the available edit operations")
+    ops_cmd.set_defaults(func=cmd_ops)
 
     status = subparsers.add_parser("status", help="show step state and spend for a job")
     status.add_argument("--job", required=True)

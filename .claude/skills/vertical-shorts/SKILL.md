@@ -1,9 +1,91 @@
 ---
 name: vertical-shorts
-description: Build a vertical 1080x1920 short from a source article and a highlight clip — scrapes the article with headless Chrome, pulls b-roll from YouTube, auto-reframes to 9:16, generates an AI presenter, voices the script, and renders a HyperFrames composition. Use when asked to turn an article plus a clip into a short, reel, or TikTok/Shorts video, or when asked to run, resume, or debug this repo's video pipeline.
+description: Edit video from plain-language change requests, and build vertical 1080x1920 shorts from an article plus a clip. Applies trims, cuts, speed changes, reframing to 9:16, on-screen text, music beds and audio fixes as a non-destructive edit list, with contact sheets for review. Use when asked to edit, trim, cut, crop, reframe, caption, or fix the audio on a video the user supplies, when they send changes to a video already being worked on, or when asked to run, resume, or debug this repo's shorts pipeline.
 ---
 
-# Vertical shorts pipeline
+# Video editing and vertical shorts
+
+Two modes in one repo:
+
+- **`edit`** — the user sends changes in plain language; you turn them into an
+  edit list and rebuild the video. This is the everyday loop.
+- **`run`** — the full pipeline: one article link plus one highlight clip into a
+  finished vertical short.
+
+Start with `edit` unless the request clearly names an article.
+
+---
+
+# Mode 1: editing a video the user sends
+
+## The loop
+
+1. **Find the file.** Uploads land under `/mnt/user-data/`. Run
+   `python -m pipeline inspect <file>` first — duration, size, fps, audio.
+   Report those back; half of all change requests depend on knowing them.
+
+2. **Give them something to point at.** `python -m pipeline sheet --video <file>`
+   writes a stamped contact sheet. Send it. A user who can see `0:14.500` on a
+   frame writes a precise request instead of "the bit after the wide shot".
+
+3. **Turn their words into ops.** Keep one edit list per video, next to it:
+
+   ```json
+   {
+     "source": "/mnt/user-data/clip.mp4",
+     "output": "out/clip.mp4",
+     "ops": [
+       { "op": "cut", "from": "0:00", "to": "0:03.5", "note": "dead air at the top" },
+       { "op": "reframe", "aspect": "9:16", "note": "make it vertical" }
+     ]
+   }
+   ```
+
+   Always write the user's own words into `note`. It is the record of *why*
+   each op exists, and three rounds later it is the only thing that tells you
+   which op to remove when they change their mind.
+
+4. **Rebuild.** `python -m pipeline edit --edits <list>.json --sheet`
+   Output is versioned (`clip.v1.mp4`, `clip.v2.mp4`, …) so nothing is lost.
+
+5. **Send back the video and the sheet**, and say what changed: the new
+   duration, the delta, and anything you had to interpret.
+
+## Translating requests into ops
+
+`python -m pipeline ops` lists all 19. The common ones:
+
+| They say | You write |
+|---|---|
+| "cut the first three seconds" | `{"op": "cut", "from": 0, "to": 3}` |
+| "just keep 0:10 to 0:25" | `{"op": "trim", "from": "0:10", "to": "0:25"}` |
+| "speed up the boring middle" | `{"op": "speed", "from": …, "to": …, "factor": 1.5}` |
+| "make it vertical / for TikTok" | `{"op": "reframe", "aspect": "9:16"}` |
+| "put the date on screen" | `{"op": "text", "text": "…", "from": …, "to": …}` |
+| "add music under it" | `{"op": "music", "file": "…", "gain": 0.18}` |
+| "the audio is too quiet / uneven" | `{"op": "loudness", "lufs": -14}` |
+| "hold on that frame" | `{"op": "freeze", "at": …, "seconds": 1.5}` |
+| "fade it in and out" | `{"op": "fade", "in_s": 0.5, "out_s": 0.8}` |
+
+## Rules for this loop
+
+- **Never edit in place, and never overwrite the source.** Every rebuild replays
+  the list from the original. That is what makes "actually, undo that" free.
+- **To undo, delete the op.** Do not add an inverse op — removing the entry is
+  the undo, and the cache makes the rebuild cheap.
+- **Order matters.** `reframe` then `text` burns text at the final size; the
+  reverse crops the text. Put framing ops before graphics ops.
+- **Ask when a timecode is genuinely ambiguous**, but only then. "Trim the
+  start" with a visible three seconds of black is not ambiguous — cut it, say
+  what you did, and let them correct you.
+- **Report the duration change every time.** It is how they notice you cut the
+  wrong thing.
+- The first rebuild of a long list re-encodes everything; later ones reuse
+  every unchanged op. If a rebuild is slow, say so rather than going quiet.
+
+---
+
+# Mode 2: the full shorts pipeline
 
 Turns **one article link plus one highlight clip** into a finished vertical
 video. The pipeline does the deterministic work; you do exactly one creative
@@ -113,7 +195,7 @@ layout changes cost nothing.
   `ELEVENLABS_API_KEY`, `KIE_API_KEY`.
 - **Check `estimated` on captions before claiming accurate timings.**
 
-## Where things are
+## Where things are (pipeline runs)
 
 ```
 runs/<job-id>/
