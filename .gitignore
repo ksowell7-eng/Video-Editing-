@@ -1,0 +1,26 @@
+# Run workspaces and outputs
+runs/
+out/*
+!out/.gitkeep
+input/*
+!input/.gitkeep
+
+# The spend ledger is machine state, not source
+budget.json
+*.corrupt-*.json
+
+# Scraped and generated media
+*.mp4
+*.mp3
+*.wav
+*.m4a
+*.png
+!docs/*.png
+!tests/fixtures/*.png
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+node_modules/

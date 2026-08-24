@@ -1,0 +1,20 @@
+# Core pipeline dependencies.
+numpy>=1.24
+
+# Haar cascades were removed in OpenCV 5, and the reframe step needs them.
+# This pin is load-bearing, not caution.
+opencv-python-headless>=4.8,<5
+
+# Headless Chrome for the article scrape. After installing, run:
+#   playwright install chromium
+playwright>=1.40
+
+yt-dlp>=2024.1.1
+requests>=2.31
+
+# Optional: `voice.provider = "local"` speaks lines with the Kokoro model
+# bundled in the hyperframes CLI instead of billing ElevenLabs.
+#   pip install kokoro-onnx soundfile
+
+# Development
+pytest>=7.4
