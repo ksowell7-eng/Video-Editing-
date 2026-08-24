@@ -18,6 +18,11 @@ budget.json
 !docs/*.png
 !tests/fixtures/*.png
 
+# Source videos you send for editing are tracked on purpose — this is the
+# route into the session, since chat attachments cap out well below a typical
+# phone video. Keep them under 100 MB (GitHub's hard limit per file).
+!uploads/**
+
 __pycache__/
 *.py[cod]
 .pytest_cache/

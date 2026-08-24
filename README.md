@@ -4,7 +4,9 @@ Two ways in.
 
 ## 1. Edit a video from change requests
 
-Send a video and say what you want changed. Each change becomes an entry in an
+Put the video in `uploads/` and push it (see `uploads/README.md` — chat
+attachments cap out around 25–30 MB, below most phone video). Then say what you
+want changed. Each change becomes an entry in an
 edit list; the video is rebuilt from the original every time.
 
 ```bash

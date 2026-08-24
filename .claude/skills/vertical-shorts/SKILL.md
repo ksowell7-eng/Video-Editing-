@@ -20,8 +20,15 @@ Start with `edit` unless the request clearly names an article.
 
 ## The loop
 
-1. **Find the file.** Uploads land under `/mnt/user-data/`. Run
-   `python -m pipeline inspect <file>` first — duration, size, fps, audio.
+1. **Find the file.** Two routes in, and the second is the common one:
+   - Chat attachments land under `/mnt/user-data/` — but they cap around
+     25–30 MB, which most phone video exceeds.
+   - Anything larger comes in through `uploads/` in this repo. `git pull`, and
+     it is there. Consumer file hosts (Drive, Dropbox, WeTransfer, iCloud) are
+     blocked from the session network, and the GitHub REST API is not
+     authorized here, so git is the channel that works. See `uploads/README.md`.
+
+   Then run `python -m pipeline inspect <file>` — duration, size, fps, audio.
    Report those back; half of all change requests depend on knowing them.
 
 2. **Give them something to point at.** `python -m pipeline sheet --video <file>`
