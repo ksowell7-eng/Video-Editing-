@@ -54,6 +54,23 @@ class OpContext:
         return p if p.is_absolute() else (self.job_root / p).resolve()
 
 
+def _resolve_font(explicit: str | None, ctx: "OpContext", default_name: str) -> str:
+    """Explicit path first, then the repo's bundled faces, then a system font.
+
+    Bundled faces are found by walking up from the edit list, so an edit list in
+    any subdirectory still finds assets/fonts at the project root.
+    """
+    if explicit:
+        candidate = ctx.resolve(explicit)
+        if candidate.exists():
+            return str(candidate)
+    for parent in [ctx.job_root, *ctx.job_root.parents]:
+        candidate = parent / "assets" / "fonts" / default_name
+        if candidate.exists():
+            return str(candidate)
+    return _font()
+
+
 def _font() -> str:
     for candidate in FONT_CANDIDATES:
         if Path(candidate).exists():
@@ -462,6 +479,245 @@ def op_loudness(src: Path, dst: Path, spec: dict, ctx: OpContext) -> Path:
 
 
 # --------------------------------------------------------------------------
+# grading and titling
+# --------------------------------------------------------------------------
+
+# A restrained golden-hour grade. The numbers are deliberately small: the goal
+# is footage that looks graded, not footage that looks filtered. Every stage is
+# separable so a single characteristic can be dialled without rebuilding.
+_GRADE_BASE = (
+    # Set a consistent toe and shoulder without clipping either end. omin lifts
+    # the black point a little so shadow detail survives; omax rolls the
+    # highlights off short of 255 so nothing takes on an HDR sheen.
+    "colorlevels=romin={black}:gomin={black}:bomin={black}"
+    ":romax={white}:gomax={white}:bomax={white},"
+    # Gentle S-curve. Blue is pulled fractionally below red and green through
+    # the midtones for warmth — shadows stay neutral, so blacks never go teal.
+    "curves=r='0/0.015 0.25/0.248 0.5/{mid_r} 0.75/0.775 1/0.985'"
+    ":g='0/0.015 0.25/0.243 0.5/{mid_g} 0.75/0.762 1/0.978'"
+    ":b='0/0.02 0.25/0.242 0.5/{mid_b} 0.75/0.748 1/0.968',"
+    # Desaturate greens and cyans only. Foliage calms down; skin is untouched
+    # because skin lives in the reds and yellows.
+    "selectivecolor=greens=0 0 {greens} -0.04:cyans=0 0 {cyans} -0.03"
+    ":yellows=0 0 {yellows} -0.02,"
+    # Warmth in the highlights, a trace in the midtones, nothing in the shadows.
+    "colorbalance=rh={warm}:gh={warm_g}:bh=-{warm}:rm={warm_m}:bm=-{warm_m},"
+    # Vibrance rather than saturation, with green held back.
+    "vibrance=intensity={vibrance}:gbal=0.96"
+)
+
+# Highlight-only bloom, screened back. Preserves the natural haze of shooting
+# into the sun instead of manufacturing a glow.
+_GRADE_BLOOM = (
+    "split[bl_a][bl_b];[bl_b]curves=all='0/0 0.75/0 0.9/0.5 1/1',"
+    "gblur=sigma={sigma}[bl_c];[bl_a][bl_c]blend=all_mode=screen:all_opacity={opacity}"
+)
+
+
+def op_grade(src: Path, dst: Path, spec: dict, ctx: OpContext) -> Path:
+    """Apply the film grade.
+
+    With `from`/`to`, the corrective half runs only over that range — which is
+    how a shot lit differently from the rest gets matched to it rather than
+    every shot being bent to accommodate one.
+    """
+    info = probe(src)
+    warmth = float(spec.get("warmth", 0.020))
+    parts = []
+
+    # Corrective white balance, optionally limited to one range.
+    temperature = spec.get("temperature")
+    if temperature:
+        window = ""
+        if spec.get("from") is not None or spec.get("to") is not None:
+            start, end = resolve_span(spec, info.duration_s)
+            window = f":enable='between(t,{start:.3f},{end:.3f})'"
+        mix = float(spec.get("temperature_mix", 0.55))
+        shift = float(spec.get("temperature_shift", 0.035))
+        parts.append(f"colortemperature=temperature={int(temperature)}:mix={mix}{window}")
+        parts.append(
+            f"colorbalance=rm={shift}:bm=-{shift}:rh={shift * 0.57:.4f}"
+            f":bh=-{shift * 0.57:.4f}{window}"
+        )
+
+    if spec.get("base", True):
+        parts.append(_GRADE_BASE.format(
+            black=float(spec.get("black_lift", 0.05)),
+            white=float(spec.get("white_rolloff", 0.972)),
+            mid_r=float(spec.get("mid_r", 0.518)),
+            mid_g=float(spec.get("mid_g", 0.508)),
+            mid_b=float(spec.get("mid_b", 0.500)),
+            greens=float(spec.get("greens", -0.22)),
+            cyans=float(spec.get("cyans", -0.12)),
+            yellows=float(spec.get("yellows", -0.05)),
+            warm=f"{warmth:.4f}",
+            warm_g=f"{warmth * 0.25:.4f}",
+            warm_m=f"{warmth * 0.45:.4f}",
+            vibrance=float(spec.get("vibrance", 0.05)),
+        ))
+
+    chain = ",".join(parts)
+    if spec.get("bloom", True):
+        chain += "," + _GRADE_BLOOM.format(
+            sigma=float(spec.get("bloom_sigma", 20)),
+            opacity=float(spec.get("bloom", 0.10)) if not isinstance(spec.get("bloom"), bool) else 0.10,
+        )
+    grain = float(spec.get("grain", 3))
+    if grain > 0:
+        # Temporal so it reads as film stock rather than fixed sensor dirt.
+        chain += f",noise=alls={grain:.0f}:allf=t+u"
+
+    return _simple_filter(src, dst, chain, None, info, ctx.fps)
+
+
+# drawtext cannot set letter-spacing — the filter exposes line_spacing only.
+# Tracking is therefore interleaved into the string itself, which is what makes
+# set type read as editorial rather than as a caption.
+_TRACKING_SPACERS = {0: "", 1: "\u200a", 2: "\u2009", 3: "\u2009\u200a"}
+
+
+def _track(text: str, level: int) -> str:
+    spacer = _TRACKING_SPACERS.get(max(0, min(3, int(level))), "")
+    return spacer.join(text) if spacer else text
+
+
+def _fade_alpha(start: float, end: float, fade: float) -> str:
+    """drawtext alpha that ramps in, holds, and ramps out."""
+    return (
+        f"if(lt(t,{start:.3f}),0,"
+        f"if(lt(t,{start + fade:.3f}),(t-{start:.3f})/{fade:.3f},"
+        f"if(lt(t,{end - fade:.3f}),1,"
+        f"if(lt(t,{end:.3f}),({end:.3f}-t)/{fade:.3f},0))))"
+    )
+
+
+def op_title(src: Path, dst: Path, spec: dict, ctx: OpContext) -> Path:
+    """A single line of editorial type that fades up and away.
+
+    Distinct from `text`: no box, a serif face, wide tracking, and a slow
+    symmetric fade. Meant to sit over picture as a thematic beat rather than
+    to label anything.
+    """
+    info = probe(src)
+    text = str(spec.get("text", "")).strip()
+    if not text:
+        raise ConfigError("title op needs a 'text' value")
+
+    start, end = resolve_span(spec, info.duration_s)
+    fade = float(spec.get("fade", 1.2))
+    if end - start < fade * 2:
+        raise ConfigError(
+            f"title '{text}' is on screen {end - start:.1f}s but its fades need "
+            f"{fade * 2:.1f}s"
+        )
+
+    font = _resolve_font(spec.get("font"), ctx, "PlayfairDisplay-400.ttf")
+    size = int(spec.get("size", max(30, round(info.height * 0.062))))
+    tracked = _track(text, spec.get("tracking", 2))
+
+    y = {
+        "top": f"h*{spec.get('inset', 0.14)}",
+        "center": "(h-text_h)/2",
+        "lower": f"h*{spec.get('inset', 0.72)}",
+        "bottom": f"h*{spec.get('inset', 0.82)}",
+    }.get(spec.get("position", "lower"), f"h*{spec.get('inset', 0.72)}")
+
+    options = [
+        f"fontfile={font}",
+        f"text={_escape_drawtext(tracked)}",
+        "x=(w-text_w)/2", f"y={y}",
+        f"fontsize={size}",
+        f"fontcolor={spec.get('color', '#F2EADC')}",
+        f"alpha='{_fade_alpha(start, end, fade)}'",
+        "expansion=none",
+    ]
+
+    chain = "drawtext=" + ":".join(options)
+    if spec.get("scrim"):
+        # Ivory type over a bright sky needs help. A soft gradient under the
+        # line is an editorial device, not a drop shadow, and it only exists
+        # while the type is on screen.
+        strength = float(spec.get("scrim", 0.28))
+        chain = (
+            f"drawbox=x=0:y=ih*0.55:w=iw:h=ih*0.45:color=black@{strength}:t=fill"
+            f":enable='between(t,{start:.3f},{end:.3f})',"
+        ) + chain
+    return _simple_filter(src, dst, chain, None, info, ctx.fps)
+
+
+def op_endcard(src: Path, dst: Path, spec: dict, ctx: OpContext) -> Path:
+    """Append the event reveal.
+
+    The background is a frame lifted from the film itself, blurred well past
+    recognition and dropped in level — organically connected to what came
+    before, and quiet enough that set type stays the only thing to read.
+    """
+    info = probe(src)
+    lines = spec.get("lines") or []
+    if not lines:
+        raise ConfigError("endcard needs a 'lines' list")
+    hold = float(spec.get("seconds", 8.0))
+
+    font_regular = _resolve_font(spec.get("font"), ctx, "PlayfairDisplay-400.ttf")
+    font_medium = _resolve_font(spec.get("font_medium"), ctx, "PlayfairDisplay-500.ttf")
+
+    # Background plate, pulled from the film.
+    at = parse(spec.get("plate_at"), field="plate_at")
+    plate = ctx.workdir / f"{dst.stem}_plate.png"
+    plate.parent.mkdir(parents=True, exist_ok=True)
+    if at is not None:
+        run([ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
+             "-ss", f"{at:.3f}", "-i", str(src), "-frames:v", "1", str(plate)], timeout=300)
+    if not plate.exists():
+        run([ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+             "-i", f"color=c={spec.get('background', '#141210')}:s={info.width}x{info.height}",
+             "-frames:v", "1", str(plate)], timeout=120)
+
+    blur = float(spec.get("blur", 46))
+    dim = float(spec.get("dim", 0.62))
+    plate_chain = (
+        f"scale={info.width}:{info.height},gblur=sigma={blur},"
+        f"colorlevels=romax={1 - dim:.3f}:gomax={1 - dim:.3f}:bomax={1 - dim:.3f},"
+        f"noise=alls=3:allf=t+u"
+    )
+
+    fade = float(spec.get("fade", 1.4))
+    draws = []
+    for entry in lines:
+        text = str(entry.get("text", "")).strip()
+        if not text:
+            continue
+        size = int(entry.get("size", round(info.height * 0.05)))
+        options = [
+            f"fontfile={font_medium if entry.get('weight') == 'medium' else font_regular}",
+            f"text={_escape_drawtext(_track(text, entry.get('tracking', 0)))}",
+            "x=(w-text_w)/2",
+            f"y=h*{float(entry.get('y', 0.5)):.4f}-text_h/2",
+            f"fontsize={size}",
+            f"fontcolor={entry.get('color', '#F2EADC')}",
+            "expansion=none",
+        ]
+        delay = float(entry.get("delay", 0.0))
+        options.append(
+            f"alpha='if(lt(t,{delay:.3f}),0,"
+            f"if(lt(t,{delay + fade:.3f}),(t-{delay:.3f})/{fade:.3f},"
+            f"if(lt(t,{hold - 0.8:.3f}),1,max(0,({hold:.3f}-t)/0.8))))'"
+        )
+        draws.append("drawtext=" + ":".join(options))
+
+    card = ctx.workdir / f"{dst.stem}_card.mp4"
+    run([
+        ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
+        "-loop", "1", "-i", str(plate), "-t", f"{hold:.3f}",
+        "-vf", plate_chain + "," + ",".join(draws) + ",setsar=1",
+        *_encode_args(with_audio=False, fps=ctx.fps),
+        str(card),
+    ], timeout=1800)
+
+    return concat([src, card], dst, fps=ctx.fps, workdir=ctx.workdir)
+
+
+# --------------------------------------------------------------------------
 # registry
 # --------------------------------------------------------------------------
 
@@ -492,6 +748,9 @@ OPS: dict[str, OpSpec] = {
     "replace_audio": OpSpec(op_replace_audio, ("file",), "swap in a new audio track"),
     "music":         OpSpec(op_music, ("file",), "lay a music bed under, ducked"),
     "loudness":      OpSpec(op_loudness, (), "normalise to a target LUFS"),
+    "grade":         OpSpec(op_grade, (), "golden-hour film grade, optionally shot-matched"),
+    "title":         OpSpec(op_title, ("text",), "editorial serif type that fades up and away"),
+    "endcard":       OpSpec(op_endcard, ("lines",), "append the event reveal card"),
 }
 
 

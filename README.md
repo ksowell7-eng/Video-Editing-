@@ -29,9 +29,23 @@ python -m pipeline edit --edits clip.edits.json --sheet
 }
 ```
 
-Nineteen operations — `python -m pipeline ops` lists them:
-`trim, cut, speed, freeze, append, reframe, crop, scale, rotate, color,
-stabilize, fade, text, subtitles, volume, mute, replace_audio, music, loudness`.
+Twenty-two operations — `python -m pipeline ops` lists them:
+`trim, cut, speed, freeze, append, reframe, crop, scale, rotate, color, grade,
+stabilize, fade, text, title, subtitles, endcard, volume, mute, replace_audio,
+music, loudness`.
+
+Three of those are finishing rather than editing:
+
+- **`grade`** — a restrained golden-hour film grade: gentle S-curve on a lifted
+  toe, greens and cyans desaturated while skin is left alone, warmth in the
+  highlights only so shadows never go teal, highlight-only bloom, temporal
+  grain. Give it a `from`/`to` and the corrective white balance applies to just
+  that range, which is how one shot lit differently from the rest gets matched
+  to it.
+- **`title`** — editorial serif type with wide tracking and a slow symmetric
+  fade. Not `text`: no box, no label, meant to sit over picture as a beat.
+- **`endcard`** — an event reveal built on a frame lifted from the film itself,
+  blurred past recognition and dropped in level, with staggered line entrances.
 
 Three properties make this survivable over many rounds:
 

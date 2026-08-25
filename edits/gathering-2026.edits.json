@@ -1,0 +1,109 @@
+{
+  "//": "The Gathering 2026 \u2014 Generation to Generation. Picture-side finishing over the locked cut. Sequence, people and performances untouched; this is grade, shot-match, typography and the event reveal only.",
+  "source": "../uploads/generation-to-generation.mp4",
+  "output": "../out/gathering-2026.mp4",
+  "fps": 30,
+  "ops": [
+    {
+      "op": "grade",
+      "note": "Golden-hour grade, plus a corrective warm-up on the Bible close-ups (7-15s), which were shot in shade and sat 22 points blue-of-red while the rest of the film is warm.",
+      "from": "0:07",
+      "to": "0:15.2",
+      "temperature": 5000,
+      "temperature_mix": 0.55,
+      "temperature_shift": 0.035,
+      "warmth": 0.02,
+      "vibrance": 0.05,
+      "greens": -0.22,
+      "cyans": -0.12,
+      "yellows": -0.05,
+      "black_lift": 0.05,
+      "white_rolloff": 0.972,
+      "bloom": 0.1,
+      "bloom_sigma": 20,
+      "grain": 3
+    },
+    {
+      "op": "title",
+      "text": "GENERATION",
+      "note": "Thematic beat one, over the older woman reading in the field.",
+      "from": "0:25.5",
+      "to": "0:31.0",
+      "fade": 1.3,
+      "position": "lower",
+      "inset": 0.74,
+      "size": 46,
+      "tracking": 2,
+      "font": "../assets/fonts/PlayfairDisplay-400.ttf"
+    },
+    {
+      "op": "title",
+      "text": "TO GENERATION",
+      "note": "Thematic beat two, over the grandmother and child with the Bible.",
+      "from": "0:57.5",
+      "to": "1:03.0",
+      "fade": 1.3,
+      "position": "lower",
+      "inset": 0.74,
+      "size": 46,
+      "tracking": 2,
+      "font": "../assets/fonts/PlayfairDisplay-400.ttf"
+    },
+    {
+      "op": "endcard",
+      "note": "Event reveal on a blurred sunflower plate from the film itself.",
+      "seconds": 8.5,
+      "plate_at": "0:20.9",
+      "blur": 46,
+      "dim": 0.62,
+      "fade": 1.4,
+      "lines": [
+        {
+          "text": "THE GATHERING",
+          "y": 0.3,
+          "size": 74,
+          "weight": "medium",
+          "tracking": 2,
+          "delay": 0.0
+        },
+        {
+          "text": "Generation to Generation",
+          "y": 0.395,
+          "size": 34,
+          "tracking": 0,
+          "delay": 0.5
+        },
+        {
+          "text": "SEPTEMBER 19, 2026",
+          "y": 0.545,
+          "size": 30,
+          "tracking": 2,
+          "delay": 1.1
+        },
+        {
+          "text": "PALACE OF PRAISE",
+          "y": 0.615,
+          "size": 30,
+          "tracking": 2,
+          "delay": 1.3
+        },
+        {
+          "text": "Psalm 22:30",
+          "y": 0.7,
+          "size": 26,
+          "tracking": 0,
+          "delay": 1.7
+        },
+        {
+          "text": "REGISTER NOW",
+          "y": 0.82,
+          "size": 28,
+          "tracking": 2,
+          "delay": 2.3
+        }
+      ],
+      "font": "../assets/fonts/PlayfairDisplay-400.ttf",
+      "font_medium": "../assets/fonts/PlayfairDisplay-500.ttf"
+    }
+  ]
+}

@@ -73,6 +73,29 @@ Start with `edit` unless the request clearly names an article.
 | "the audio is too quiet / uneven" | `{"op": "loudness", "lufs": -14}` |
 | "hold on that frame" | `{"op": "freeze", "at": …, "seconds": 1.5}` |
 | "fade it in and out" | `{"op": "fade", "in_s": 0.5, "out_s": 0.8}` |
+| "grade it / make it cinematic" | `{"op": "grade", "warmth": 0.02, "vibrance": 0.05}` |
+| "this shot doesn't match the others" | `{"op": "grade", "from": …, "to": …, "temperature": 5000}` |
+| "put a title over it" | `{"op": "title", "text": "…", "from": …, "to": …}` |
+
+## Finishing work
+
+`grade`, `title` and `endcard` are for finishing a locked cut rather than
+changing it. Three things matter when using them:
+
+- **Measure before grading.** Sample frames and compare mean R/G/B, black point
+  and saturation across the film. Footage is rarely uniform — a shot in shade
+  can sit 20+ points blue-of-red against everything else, and matching that one
+  shot is worth more than any look applied to all of them. `grade` with
+  `from`/`to` does the corrective pass on just that range.
+- **Restraint is measurable.** A grade that moves saturation more than ~4 points
+  or shifts R-B more than ~10 is a filter, not a grade. Check the numbers, then
+  look at skin and whites specifically — numbers cannot tell you that skin has
+  gone orange.
+- **Justify stabilization and push-ins, or skip them.** Measure camera motion
+  with phase correlation first. Under ~3 px/frame at 1280 wide is intentional
+  operator movement, and `deshake` will fight it and warp edges. Digital
+  push-ins on compressed footage cost real detail. Skipping both and saying why
+  is usually the better answer.
 
 ## Rules for this loop
 

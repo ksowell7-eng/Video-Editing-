@@ -2,6 +2,11 @@
 runs/
 out/*
 !out/.gitkeep
+
+# Edit intermediates and the prefix cache — rebuildable from the edit list
+editwork/
+**/editwork/
+.editcache/
 input/*
 !input/.gitkeep
 
