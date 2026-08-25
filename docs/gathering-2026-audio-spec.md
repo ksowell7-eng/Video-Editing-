@@ -151,3 +151,35 @@ compression, which is the right default here — the VO must always win.
 
 **Delivery loudness:** −14 LUFS integrated, −1.5 dBTP. That is the streaming
 standard and keeps the quiet opening genuinely quiet.
+
+---
+
+## Appendix — recorded VO, first assembly
+
+Two voice memos, mastered and placed. Assumptions made in the absence of the
+new script text, all of them easy to change:
+
+| | |
+|---|---|
+| Take 1 | 2.00 – 28.68 (26.68s) |
+| breath | 2.2s |
+| Take 2 | 30.88 – 91.68 (60.80s) |
+| silence before the card | 4.02s |
+
+Take order follows the filenames (`The_gathering_1`, `The_gathering_2`). Each
+take is trimmed to 150ms before its first word, given a 120ms fade in and a
+250–350ms fade out, and placed as a continuous passage rather than chopped into
+lines — the read flows, and cutting a flowing read apart to hit predetermined
+marks is audible.
+
+**The new script changes the film's character.** 87 seconds of speech across
+95.7 seconds of picture is close to wall-to-wall narration. The original brief
+was 54 words with long silences, where the pictures carried the story and the
+voice punctuated it. This version is a narrated piece. Neither is wrong, but
+the music brief in section 2 was written for the sparse version — with speech
+this dense, the cue needs to stay further back and simpler, or it will fight
+the voice for the whole film.
+
+**The walk-away is now 4 seconds of silence rather than 12.** If that ending
+matters — and it is the visual conclusion of the story — the options are to
+start the VO earlier, tighten the breath between takes, or trim a sentence.
