@@ -95,7 +95,41 @@ child's face and a pause. Anything else cheapens it.
 
 ---
 
-## 4. Conforming it
+## 4. Generating the narration
+
+The script lives at `narration/gathering-2026.json` with every line's absolute
+timecode. Put your voice id in its `voice` block and run:
+
+```bash
+export ELEVENLABS_API_KEY=...        # never in a job file, never committed
+python -m pipeline narrate \
+  --script narration/gathering-2026.json \
+  --duration 104.2 --provider elevenlabs --out audio/vo.wav
+```
+
+Lines are cached per id, so re-running after changing one line re-synthesises
+that line only. `--provider local` builds a free offline scratch track for
+judging timing instead.
+
+The tool reports overlaps and overruns rather than fixing them — a read that
+runs into the next line needs a shorter line or a different timecode, not a
+time-stretched voice.
+
+**Timing headroom.** Measured against the scratch read, the tightest gap
+between lines is 1.41s and most are over 2s. A slower, more considered human
+read can run 20–25% longer per line and still sit comfortably. Total speech is
+about 18 seconds across 1:44.
+
+**Voice settings** in the script are chosen for the brief: `style` is low
+(0.12) because style is the parameter that pushes a read theatrical, and
+`stability` is high (0.62) to keep delivery even rather than emotive. `speed`
+0.92 slows it slightly below default.
+
+**This session cannot reach ElevenLabs** — the network policy denies
+`api.elevenlabs.io` at the proxy. Run the command above anywhere with normal
+outbound access.
+
+## 5. Conforming it
 
 Once narration and music exist, they attach to the picture cut without
 re-rendering the grade:

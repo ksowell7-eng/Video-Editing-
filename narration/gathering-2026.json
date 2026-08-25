@@ -1,0 +1,26 @@
+{
+  "//": "Narration for The Gathering 2026. Timecodes are absolute against the finished picture cut (1:44.200). 54 words. Generate with: python -m pipeline narrate --script narration/gathering-2026.json --duration 104.2 --provider elevenlabs --out audio/vo.wav",
+  "voice": {
+    "//": "Set voice_id from your ElevenLabs dashboard. Wanted: adult female, warm and grounded, lower register, natural American, 40-55 in vocal character. Low style value keeps the read understated — the brief asks for restraint, and style is what pushes a read theatrical.",
+    "voice_id": "",
+    "model": "eleven_v3",
+    "stability": 0.62,
+    "similarity_boost": 0.75,
+    "style": 0.12,
+    "speed": 0.92,
+    "output_format": "mp3_44100_128",
+    "local_voice": "af_heart"
+  },
+  "lines": [
+    { "id": "01-never-end",   "at": "0:02.5",  "text": "The faith we carry was never meant to end with us." },
+    { "id": "02-someone",     "at": "0:09.5",  "text": "Someone showed us what it looked like to follow Jesus." },
+    { "id": "03-prayed",      "at": "0:24.5",  "text": "Someone prayed." },
+    { "id": "04-taught",      "at": "0:27.0",  "text": "Someone taught." },
+    { "id": "05-went-before", "at": "0:29.5",  "text": "Someone went before us." },
+    { "id": "06-and-now",     "at": "0:48.5",  "text": "And now..." },
+    { "id": "07-our-turn",    "at": "0:52.0",  "text": "...it's our turn." },
+    { "id": "08-the-story",   "at": "1:10.5",  "text": "The story of what God has done..." },
+    { "id": "09-doesnt-end",  "at": "1:14.5",  "text": "...doesn't end with us." },
+    { "id": "10-future",      "at": "1:19.0",  "text": "Future generations will hear about the wonders of the Lord." }
+  ]
+}

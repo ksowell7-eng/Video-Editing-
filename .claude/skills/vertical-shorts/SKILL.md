@@ -77,6 +77,17 @@ Start with `edit` unless the request clearly names an article.
 | "this shot doesn't match the others" | `{"op": "grade", "from": …, "to": …, "temperature": 5000}` |
 | "put a title over it" | `{"op": "title", "text": "…", "from": …, "to": …}` |
 
+## Narration on a locked cut
+
+`python -m pipeline narrate --script <s>.json --duration <s> --provider local`
+builds a track with each line at an absolute timecode. Use `--provider local`
+first: it is free and offline, and it answers the question worth answering
+early — do the timings work against picture — before anyone pays for a read.
+Switch to `elevenlabs` for the delivery voice.
+
+Never put an API key in a script or an edit list. `ELEVENLABS_API_KEY` in the
+environment, nowhere else.
+
 ## Finishing work
 
 `grade`, `title` and `endcard` are for finishing a locked cut rather than

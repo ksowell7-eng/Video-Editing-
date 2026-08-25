@@ -19,6 +19,8 @@ from pathlib import Path
 from .budget import from_job
 from .config import DEFAULTS, Job, parse_overrides
 from .edits.apply import apply_edits, load_edit_list, next_version, prune_cache
+from .edits.narrate import assemble, load_script, synthesize
+from .edits.narrate import report as narration_report
 from .edits.ops import OPS
 from .edits.review import contact_sheet
 from .errors import ConfigError, NeedsScript, PipelineError
@@ -207,6 +209,30 @@ def cmd_edit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_narrate(args: argparse.Namespace) -> int:
+    """Generate a narration track with lines placed at absolute timecodes."""
+    script_path = Path(args.script).resolve()
+    script = load_script(script_path)
+    out = Path(args.out).resolve() if args.out else script_path.with_suffix(".wav")
+    work = Path(args.workdir).resolve() if args.workdir else script_path.parent / "lines"
+
+    logs.configure(verbose=args.verbose)
+    logs.info(f"{len(script['lines'])} lines via {args.provider}")
+    placed = synthesize(
+        script, work, provider=args.provider,
+        version=DEFAULTS["render"]["hyperframes_version"], force=args.force,
+    )
+
+    duration = float(args.duration) if args.duration else max(p.end for p in placed) + 1.0
+    for problem in narration_report(placed, duration):
+        logs.warn(problem)
+
+    assemble(placed, out, duration, gain=float(args.gain))
+    logs.ok(f"{out.name}", duration=f"{duration:.1f}s", lines=len(placed))
+    logs.info("attach with: {\"op\": \"replace_audio\", \"file\": \"%s\"}" % out.name)
+    return 0
+
+
 def cmd_sheet(args: argparse.Namespace) -> int:
     video = Path(args.video).resolve()
     out = Path(args.out).resolve() if args.out else video.with_suffix(".sheet.png")
@@ -313,6 +339,17 @@ def build_parser() -> argparse.ArgumentParser:
     edit.add_argument("--sheet", action="store_true", help="also write a contact sheet")
     edit.add_argument("--sheet-frames", type=int, default=12)
     edit.set_defaults(func=cmd_edit)
+
+    narrate = subparsers.add_parser("narrate", help="build a narration track from a timed script")
+    narrate.add_argument("--script", required=True)
+    narrate.add_argument("--out", help="output wav (default: beside the script)")
+    narrate.add_argument("--duration", type=float, help="length of the finished cut, in seconds")
+    narrate.add_argument("--provider", choices=["elevenlabs", "local"], default="elevenlabs",
+                         help="'local' is a free offline scratch track for judging timing")
+    narrate.add_argument("--gain", default=1.0, help="level applied to every line")
+    narrate.add_argument("--workdir", help="where individual line files are cached")
+    narrate.add_argument("--force", action="store_true", help="re-synthesise cached lines")
+    narrate.set_defaults(func=cmd_narrate)
 
     sheet = subparsers.add_parser("sheet", help="write a stamped contact sheet for a video")
     sheet.add_argument("--video", required=True)
