@@ -163,11 +163,27 @@ def synthesize(
 # noise reduction — it costs more in artefacts than it buys on a decent take,
 # and a genuinely noisy take should be re-recorded rather than repaired.
 CLEANUP = (
-    "highpass=f=80,"
-    "deesser=i=0.4,"
-    "acompressor=threshold=0.12:ratio=2.5:attack=12:release=200:makeup=1.4,"
-    "loudnorm=I={lufs}:TP=-2:LRA=9"
+    "aresample=48000,"
+    # Rumble, handling noise and HVAC all live below this.
+    "highpass=f=75,"
+    # Phone mics up close add boxiness around 300Hz; a little chest at 150 puts
+    # back the weight that removing it costs, without waking the room tone
+    # (which sits loudest in the 150-400 band on a domestic recording).
+    "equalizer=f=300:t=q:w=1.4:g=-1.8,"
+    "equalizer=f=150:t=q:w=1.2:g=1.0,"
+    "deesser=i=0.35,"
+    "equalizer=f=4500:t=q:w=1.8:g=1.5,"
+    # Two gentle stages in series rather than one hard one. The first catches
+    # peaks, the second levels the read. That is what produces an even,
+    # unhurried delivery without the pumping a single aggressive stage gives.
+    "acompressor=threshold=0.10:ratio=2.2:attack=18:release=250:knee=6,"
+    "acompressor=threshold=0.20:ratio=1.8:attack=40:release=400:knee=8,"
+    "alimiter=limit=0.95:attack=5:release=60,"
+    "loudnorm=I={lufs}:TP=-2:LRA=7"
 )
+
+# Deliberately no reverb. Narration for a documentary sits close and dry;
+# added space is the single most common tell of an amateur voice track.
 
 
 def clean(src: Path, dst: Path, *, lufs: float = -17.0) -> Path:
