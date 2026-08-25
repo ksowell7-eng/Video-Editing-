@@ -591,6 +591,28 @@ def _fade_alpha(start: float, end: float, fade: float) -> str:
     )
 
 
+def _gradient_scrim(path: Path, width: int, height: int, strength: float, top: float) -> Path:
+    """A transparent-to-black vertical gradient, written once and reused.
+
+    Drawn with a cosine ramp rather than a linear one so there is no visible
+    edge where it begins — a hard-edged box under type reads as a lower-third
+    graphic, which is exactly the look this is trying to avoid.
+    """
+    import numpy as np  # noqa: PLC0415
+    import cv2  # noqa: PLC0415
+
+    alpha = np.zeros((height, width), dtype=np.float32)
+    start = int(height * top)
+    span = max(1, height - start)
+    ramp = (1 - np.cos(np.linspace(0, np.pi, span))) / 2      # 0 → 1, eased both ends
+    alpha[start:, :] = (ramp * strength)[:, None]
+    layer = np.zeros((height, width, 4), dtype=np.uint8)
+    layer[:, :, 3] = (alpha * 255).astype(np.uint8)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(path), layer)
+    return path
+
+
 def op_title(src: Path, dst: Path, spec: dict, ctx: OpContext) -> Path:
     """A single line of editorial type that fades up and away.
 
@@ -632,17 +654,40 @@ def op_title(src: Path, dst: Path, spec: dict, ctx: OpContext) -> Path:
         "expansion=none",
     ]
 
-    chain = "drawtext=" + ":".join(options)
-    if spec.get("scrim"):
-        # Ivory type over a bright sky needs help. A soft gradient under the
-        # line is an editorial device, not a drop shadow, and it only exists
-        # while the type is on screen.
-        strength = float(spec.get("scrim", 0.28))
-        chain = (
-            f"drawbox=x=0:y=ih*0.55:w=iw:h=ih*0.45:color=black@{strength}:t=fill"
-            f":enable='between(t,{start:.3f},{end:.3f})',"
-        ) + chain
-    return _simple_filter(src, dst, chain, None, info, ctx.fps)
+    draw = "drawtext=" + ":".join(options)
+
+    if not spec.get("scrim"):
+        return _simple_filter(src, dst, draw, None, info, ctx.fps)
+
+    # Ivory type over a bright, backlit frame will not read on its own. A soft
+    # gradient under the line is standard editorial practice — it is not a drop
+    # shadow or a glow, and it exists only while the type is on screen.
+    #
+    # The scrim rides in as a second input so its alpha can be faded on the same
+    # curve as the type. Animating it with `enable` instead would pop it on and
+    # off, which is far more noticeable than the scrim itself.
+    strength = float(spec.get("scrim", 0.3))
+    scrim = _gradient_scrim(
+        ctx.workdir / f"{dst.stem}_scrim.png", info.width, info.height,
+        strength, float(spec.get("scrim_top", 0.5)),
+    )
+    graph = (
+        f"[1:v]scale={info.width}:{info.height},format=rgba,"
+        f"fade=t=in:st={start:.3f}:d={fade:.3f}:alpha=1,"
+        f"fade=t=out:st={end - fade:.3f}:d={fade:.3f}:alpha=1[scrim];"
+        f"[0:v][scrim]overlay=0:0:shortest=1[scrimmed];"
+        f"[scrimmed]{draw}[v]"
+    )
+    args = [
+        ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
+        "-i", str(src), "-loop", "1", "-i", str(scrim),
+        "-filter_complex", graph, "-map", "[v]",
+    ]
+    if info.has_audio:
+        args += ["-map", "0:a"]
+    args += _encode_args(with_audio=info.has_audio, fps=ctx.fps) + [str(dst)]
+    run(args, timeout=3600)
+    return dst
 
 
 def op_endcard(src: Path, dst: Path, spec: dict, ctx: OpContext) -> Path:
