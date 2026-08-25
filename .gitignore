@@ -28,6 +28,10 @@ budget.json
 # phone video. Keep them under 100 MB (GitHub's hard limit per file).
 !uploads/**
 
+# Finished cuts are tracked too — chat attachments cap at 30 MB and a
+# finished 1080p minute clears that easily, so the repo is the delivery route.
+!deliverables/**
+
 __pycache__/
 *.py[cod]
 .pytest_cache/
