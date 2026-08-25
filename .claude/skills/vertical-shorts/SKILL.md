@@ -85,6 +85,16 @@ first: it is free and offline, and it answers the question worth answering
 early — do the timings work against picture — before anyone pays for a read.
 Switch to `elevenlabs` for the delivery voice.
 
+`--provider recorded` takes a human read instead — either a folder of files
+named by line id, or one continuous take split on the pauses between lines.
+Prefer it over any synthetic voice whenever the user can record. Cleanup is
+high-pass, de-ess, gentle compression, loudness — and deliberately no noise
+reduction, which costs more in artefacts than it buys.
+
+When a split finds a different number of segments than the script has lines,
+say so and stop rather than pairing them up. Silently mapping eleven segments
+onto ten lines puts every line after the extra one on the wrong picture.
+
 Never put an API key in a script or an edit list. `ELEVENLABS_API_KEY` in the
 environment, nowhere else.
 

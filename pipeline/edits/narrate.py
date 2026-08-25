@@ -14,6 +14,12 @@ Two providers, one interface:
   local       the Kokoro model bundled with the hyperframes CLI. Free, offline,
               and audibly synthetic — a scratch track for judging timing
               against picture before anyone pays for a read.
+  recorded    a real human read. Either one file per line, named by line id, or
+              a single continuous take split on the pauses between lines.
+
+The recorded path is the one that matters. A human read is the only thing that
+sounds like a person, and everything here exists to get one onto the timeline
+without a DAW.
 """
 
 from __future__ import annotations
@@ -143,6 +149,154 @@ def synthesize(
             duration=probe(dst).duration_s, file=dst,
         ))
     return placed
+
+
+
+
+# --------------------------------------------------------------------------
+# recorded narration
+# --------------------------------------------------------------------------
+
+# Cleanup applied to a human recording before it hits the timeline. Deliberately
+# conservative: a high-pass to lose room rumble and mic handling, a gentle
+# de-ess, mild compression for an even read, and loudness normalisation. No
+# noise reduction — it costs more in artefacts than it buys on a decent take,
+# and a genuinely noisy take should be re-recorded rather than repaired.
+CLEANUP = (
+    "highpass=f=80,"
+    "deesser=i=0.4,"
+    "acompressor=threshold=0.12:ratio=2.5:attack=12:release=200:makeup=1.4,"
+    "loudnorm=I={lufs}:TP=-2:LRA=9"
+)
+
+
+def clean(src: Path, dst: Path, *, lufs: float = -17.0) -> Path:
+    """Normalise a recorded line so every read sits at the same level."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    run([
+        ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+        "-af", CLEANUP.format(lufs=lufs), "-c:a", "pcm_s16le", str(dst),
+    ], timeout=900)
+    return dst
+
+
+def detect_speech(
+    take: Path, *, noise_db: float = -34.0, min_silence_s: float = 0.45,
+    pad_s: float = 0.12,
+) -> list[tuple[float, float]]:
+    """Find the spoken stretches in a continuous take.
+
+    Works off ffmpeg's silencedetect: the gaps are reported, and the speech is
+    what lies between them. A little padding is added at each end so the split
+    never clips a soft consonant at the start or the tail of a word.
+    """
+    proc = run([
+        ffmpeg(), "-hide_banner", "-nostats", "-i", str(take),
+        "-af", f"silencedetect=noise={noise_db}dB:d={min_silence_s}",
+        "-f", "null", "-",
+    ], timeout=900, check=False)
+    output = (proc.stderr or "") + (proc.stdout or "")
+
+    total = probe(take).duration_s
+    silences: list[tuple[float, float]] = []
+    start: float | None = None
+    for line in output.splitlines():
+        if "silence_start:" in line:
+            try:
+                start = float(line.split("silence_start:")[1].split()[0])
+            except (IndexError, ValueError):
+                start = None
+        elif "silence_end:" in line and start is not None:
+            try:
+                end = float(line.split("silence_end:")[1].split()[0])
+            except (IndexError, ValueError):
+                continue
+            silences.append((start, end))
+            start = None
+    if start is not None:
+        silences.append((start, total))
+
+    speech: list[tuple[float, float]] = []
+    cursor = 0.0
+    for sil_start, sil_end in silences:
+        if sil_start - cursor > 0.12:
+            speech.append((max(0.0, cursor - pad_s), min(total, sil_start + pad_s)))
+        cursor = sil_end
+    if total - cursor > 0.12:
+        speech.append((max(0.0, cursor - pad_s), total))
+    return speech
+
+
+def split_take(
+    take: Path, script: dict[str, Any], out_dir: Path, **kwargs: Any,
+) -> tuple[list[Path], list[str]]:
+    """Cut a continuous take into one file per line, in script order.
+
+    Returns the files and any problems. A count mismatch is reported rather
+    than guessed at — silently pairing eleven detected segments with ten lines
+    would put every line after the extra one on the wrong picture.
+    """
+    lines = script["lines"]
+    segments = detect_speech(take, **kwargs)
+    problems: list[str] = []
+    if len(segments) != len(lines):
+        problems.append(
+            f"found {len(segments)} spoken segments but the script has {len(lines)} lines"
+        )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    files: list[Path] = []
+    for index, (start, end) in enumerate(segments):
+        line_id = str(lines[index].get("id") or f"{index:02d}") if index < len(lines) else f"extra_{index:02d}"
+        dst = out_dir / f"recorded_{line_id}.wav"
+        run([
+            ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
+            "-ss", f"{start:.3f}", "-i", str(take), "-t", f"{end - start:.3f}",
+            "-c:a", "pcm_s16le", str(dst),
+        ], timeout=600)
+        files.append(dst)
+    return files, problems
+
+
+def collect_recorded(
+    script: dict[str, Any], source: Path, work_dir: Path, *, lufs: float = -17.0,
+) -> tuple[list[Placed], list[str]]:
+    """Gather a human read, from either a directory of lines or one take."""
+    work_dir.mkdir(parents=True, exist_ok=True)
+    problems: list[str] = []
+
+    if source.is_dir():
+        raw: list[Path] = []
+        for index, line in enumerate(script["lines"]):
+            line_id = str(line.get("id") or f"{index:02d}")
+            found = sorted(
+                p for p in source.iterdir()
+                if p.is_file() and line_id in p.stem
+                and p.suffix.lower() in (".wav", ".mp3", ".m4a", ".aiff", ".aif", ".flac")
+            )
+            if not found:
+                raise ConfigError(
+                    f"No recording found for line '{line_id}' in {source}",
+                    hint="Name each file after its line id, e.g. 03-prayed.wav.",
+                )
+            if len(found) > 1:
+                problems.append(f"{line_id}: {len(found)} files match; using {found[0].name}")
+            raw.append(found[0])
+    else:
+        raw, problems = split_take(take=source, script=script, out_dir=work_dir / "split")
+
+    placed: list[Placed] = []
+    for index, line in enumerate(script["lines"]):
+        if index >= len(raw):
+            break
+        line_id = str(line.get("id") or f"{index:02d}")
+        cleaned = clean(raw[index], work_dir / f"clean_{line_id}.wav", lufs=lufs)
+        placed.append(Placed(
+            id=line_id, text=" ".join(str(line["text"]).split()),
+            at=float(parse(line.get("at"), field="at") or 0.0),
+            duration=probe(cleaned).duration_s, file=cleaned,
+        ))
+    return placed, problems
 
 
 def assemble(placed: list[Placed], out: Path, duration: float, *, gain: float = 1.0) -> Path:

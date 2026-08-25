@@ -19,7 +19,7 @@ from pathlib import Path
 from .budget import from_job
 from .config import DEFAULTS, Job, parse_overrides
 from .edits.apply import apply_edits, load_edit_list, next_version, prune_cache
-from .edits.narrate import assemble, load_script, synthesize
+from .edits.narrate import assemble, collect_recorded, load_script, synthesize
 from .edits.narrate import report as narration_report
 from .edits.ops import OPS
 from .edits.review import contact_sheet
@@ -218,10 +218,23 @@ def cmd_narrate(args: argparse.Namespace) -> int:
 
     logs.configure(verbose=args.verbose)
     logs.info(f"{len(script['lines'])} lines via {args.provider}")
-    placed = synthesize(
-        script, work, provider=args.provider,
-        version=DEFAULTS["render"]["hyperframes_version"], force=args.force,
-    )
+    if args.provider == "recorded":
+        if not args.recording:
+            raise ConfigError(
+                "--provider recorded needs --recording",
+                hint="Point it at a folder of per-line files, or at one continuous take.",
+            )
+        source = Path(args.recording).resolve()
+        if not source.exists():
+            raise ConfigError(f"Recording not found: {source}")
+        placed, issues = collect_recorded(script, source, work, lufs=float(args.lufs))
+        for issue in issues:
+            logs.warn(issue)
+    else:
+        placed = synthesize(
+            script, work, provider=args.provider,
+            version=DEFAULTS["render"]["hyperframes_version"], force=args.force,
+        )
 
     duration = float(args.duration) if args.duration else max(p.end for p in placed) + 1.0
     for problem in narration_report(placed, duration):
@@ -344,8 +357,13 @@ def build_parser() -> argparse.ArgumentParser:
     narrate.add_argument("--script", required=True)
     narrate.add_argument("--out", help="output wav (default: beside the script)")
     narrate.add_argument("--duration", type=float, help="length of the finished cut, in seconds")
-    narrate.add_argument("--provider", choices=["elevenlabs", "local"], default="elevenlabs",
-                         help="'local' is a free offline scratch track for judging timing")
+    narrate.add_argument("--provider", choices=["elevenlabs", "local", "recorded"],
+                         default="elevenlabs",
+                         help="'recorded' uses a human read; 'local' is a free offline scratch")
+    narrate.add_argument("--recording",
+                         help="for --provider recorded: a folder of per-line files, or one take")
+    narrate.add_argument("--lufs", default=-17.0,
+                         help="level each recorded line is normalised to (default -17)")
     narrate.add_argument("--gain", default=1.0, help="level applied to every line")
     narrate.add_argument("--workdir", help="where individual line files are cached")
     narrate.add_argument("--force", action="store_true", help="re-synthesise cached lines")
