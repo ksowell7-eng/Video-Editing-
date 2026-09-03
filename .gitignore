@@ -32,6 +32,9 @@ budget.json
 # finished 1080p minute clears that easily, so the repo is the delivery route.
 !deliverables/**
 
+# Bizzy Bee project assets: source clips, generated footage, scrims, output
+!bizzybee/**
+
 __pycache__/
 *.py[cod]
 .pytest_cache/
