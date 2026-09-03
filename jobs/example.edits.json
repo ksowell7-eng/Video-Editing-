@@ -1,0 +1,54 @@
+{
+  "//": "An edit list. Each op is one change; 'note' records the request it came from. Rebuild with: python -m pipeline edit --edits jobs/example.edits.json --sheet",
+  "source": "../input/clip.mp4",
+  "output": "../out/clip.mp4",
+  "ops": [
+    {
+      "op": "cut",
+      "from": "0:00",
+      "to": "0:03.5",
+      "note": "dead air at the top"
+    },
+    {
+      "op": "trim",
+      "to": "0:45",
+      "note": "keep it under 45 seconds"
+    },
+    {
+      "op": "speed",
+      "from": "0:12",
+      "to": "0:20",
+      "factor": 1.4,
+      "note": "tighten the middle"
+    },
+    {
+      "op": "reframe",
+      "aspect": "9:16",
+      "note": "make it vertical"
+    },
+    {
+      "op": "text",
+      "text": "88th minute",
+      "from": "0:01",
+      "to": "0:04",
+      "position": "top"
+    },
+    {
+      "op": "fade",
+      "in_s": 0.4,
+      "out_s": 0.8
+    },
+    {
+      "op": "music",
+      "file": "../input/bed.mp3",
+      "gain": 0.18,
+      "duck": true,
+      "note": "music under, ducked"
+    },
+    {
+      "op": "loudness",
+      "lufs": -14,
+      "note": "even out the levels"
+    }
+  ]
+}

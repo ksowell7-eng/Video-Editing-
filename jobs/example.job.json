@@ -1,0 +1,72 @@
+{
+  "id": "keeper-hesitation",
+
+  "//": "Insert the video and the parameters. Everything not named here falls back to the documented defaults; run `python -m pipeline run --job jobs/example.job.json`.",
+
+  "input": {
+    "highlight_clip": "../input/highlight.mp4",
+    "article_url": "https://example.com/1993-cup-final-report",
+    "coach_reference_image": "../input/coach.png",
+    "music_bed": null
+  },
+
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "target_duration_s": 45,
+    "quality": "high",
+    "file": "../out/keeper-hesitation.mp4"
+  },
+
+  "phases": [
+    { "id": "hook",     "voice": "narrator", "target_s": 4,  "bed": "highlight", "markers": true,
+      "brief": "Cold open on the decisive moment. One sentence, present tense, no setup." },
+    { "id": "context",  "voice": "narrator", "target_s": 10, "bed": "broll",     "markers": true,
+      "brief": "The situation from the article: who, when, what was at stake. Facts only." },
+    { "id": "analysis", "voice": "coach",    "target_s": 22, "bed": "avatar",    "markers": false,
+      "brief": "The coach's tactical read: what the players actually did and why it worked." },
+    { "id": "payoff",   "voice": "narrator", "target_s": 9,  "bed": "highlight", "markers": true,
+      "brief": "Land the lesson in one line, then the outcome. No call to action." }
+  ],
+
+  "broll": {
+    "queries": [],
+    "keep_clips": 6,
+    "clip_len_s": [2.0, 4.5],
+    "only_creative_commons": false
+  },
+
+  "reframe": {
+    "strategy": "face_track",
+    "max_pan_px_per_s": 240,
+    "deadzone_px": 36
+  },
+
+  "voice": {
+    "provider": "elevenlabs",
+    "model": "eleven_v3",
+    "narrator_voice_id": "PASTE_ELEVENLABS_VOICE_ID",
+    "coach_voice_id": "PASTE_ELEVENLABS_VOICE_ID"
+  },
+
+  "avatar": {
+    "model": "bytedance/seedance-2",
+    "prompt": "Veteran coach at a tactics board in a dim room, shallow depth of field, natural head motion.",
+    "cost_per_second_usd": 0.12
+  },
+
+  "budget": {
+    "max_usd_per_run": 4.0,
+    "max_usd_total": 40.0
+  },
+
+  "identity": {
+    "endpoint": "http://localhost:1234/v1",
+    "model": "qwen3.6",
+    "targets": ["avatar", "broll"]
+  },
+
+  "captions": { "style": "karaoke", "model": "small.en" },
+  "markers":  { "style": "underline", "color": "#ffcc00" }
+}
